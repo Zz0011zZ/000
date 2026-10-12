@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>单摆模拟器 · Simple Pendulum Simulator</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    background: #1a1a24;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #cfd2dc;
+    display: flex;
+    flex-direction: column;
+  }
+  #stage { display: block; width: 100%; flex: 1 1 auto; min-height: 0; cursor: crosshair; }
+
+  /* ---- 画布下方实时参数控制条 ---- */
+  #controls {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 26px 16px;
+    background: linear-gradient(180deg, #23232f 0%, #1c1c26 100%);
+    border-top: 1px solid rgba(120, 140, 200, 0.22);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+    user-select: none;
+  }
+
+  /* 天体预设胶囊 */
+  .presets { display: flex; align-items: center; gap: 10px; }
+  .presets .ptitle { font-size: 12px; color: #767c92; letter-spacing: 1px; }
+  .caps { display: flex; gap: 8px; }
+  .cap {
+    padding: 6px 16px; font-size: 12.5px; color: #b6bccf; cursor: pointer;
+    background: rgba(70, 80, 120, 0.18);
+    border: 1px solid rgba(130, 150, 200, 0.26);
+    border-radius: 999px;
+    transition: color .2s, background .2s, border-color .2s, box-shadow .2s;
+  }
+  .cap:hover { color: #e6ecff; background: rgba(100, 130, 210, 0.28); }
+  .cap.active {
+    color: #eaf2ff; font-weight: 600;
+    background: linear-gradient(180deg, rgba(120, 170, 255, 0.5), rgba(70, 110, 200, 0.38));
+    border-color: rgba(150, 190, 255, 0.7);
+    box-shadow: 0 0 14px rgba(120, 170, 255, 0.35);
+  }
+  .savehint { margin-left: auto; font-size: 11px; color: #6c7288; }
+
+  .sliderRow { display: flex; align-items: center; gap: 26px; }
+  .sliderRow .ctl { flex: 1 1 0; min-width: 120px; }
+  .sliderRow .ctl label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 12px; margin-bottom: 6px; color: #8f95ab;
+  }
+  #controls .ctl label b {
+    color: #8fb8ff; font-weight: 600; font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 10px rgba(143, 184, 255, 0.35);
+  }
+  #btnReset {
+    flex: 0 0 auto; padding: 10px 22px; font-size: 13px; color: #eaf0ff;
+    background: linear-gradient(180deg, rgba(90, 130, 220, 0.42), rgba(60, 90, 170, 0.32));
+    border: 1px solid rgba(143, 184, 255, 0.45);
+    border-radius: 9px; cursor: pointer; letter-spacing: 1px;
+    transition: background .18s, box-shadow .18s, transform .1s;
+  }
+  #btnReset:hover {
+    background: linear-gradient(180deg, rgba(120, 165, 255, 0.55), rgba(70, 110, 200, 0.42));
+    box-shadow: 0 0 16px rgba(120, 170, 255, 0.35);
+  }
+  #btnReset:active { transform: translateY(1px); }
+
+  #panel {
+    position: fixed; top: 18px; left: 18px; width: 268px;
+    background: rgba(30, 30, 44, 0.82);
+    border: 1px solid rgba(120, 140, 200, 0.22);
+    border-radius: 12px;
+    padding: 14px 16px 12px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    user-select: none;
+  }
+  #panel h1 {
+    font-size: 14px; font-weight: 600; letter-spacing: 1px;
+    color: #8fb8ff; margin-bottom: 10px;
+  }
+  .row { margin-bottom: 10px; }
+  .row label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; margin-bottom: 4px; color: #9aa0b4;
+  }
+  .row label span { color: #e6e9f2; font-variant-numeric: tabular-nums; }
+  input[type="range"] {
+    width: 100%; height: 4px; -webkit-appearance: none; appearance: none;
+    background: linear-gradient(90deg, #4f7fd4, #2a2f45);
+    border-radius: 3px; outline: none; cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%;
+    background: #8fb8ff; border: 2px solid #1a1a24;
+    box-shadow: 0 0 8px rgba(143, 184, 255, 0.8); cursor: pointer;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 13px; height: 13px; border-radius: 50%; background: #8fb8ff;
+    border: 2px solid #1a1a24; cursor: pointer;
+  }
+  .btns { display: flex; gap: 8px; margin-top: 12px; }
+  button {
+    flex: 1; padding: 7px 0; font-size: 12px; color: #dfe3ee; cursor: pointer;
+    background: rgba(80, 110, 180, 0.22);
+    border: 1px solid rgba(140, 170, 230, 0.3);
+    border-radius: 7px; transition: background .18s, transform .1s;
+  }
+  button:hover { background: rgba(110, 150, 240, 0.34); }
+  button:active { transform: translateY(1px); }
+  #hud {
+    margin-top: 12px; padding-top: 10px; font-size: 11.5px; line-height: 1.75;
+    border-top: 1px solid rgba(120, 140, 200, 0.18); color: #858ba3;
+    font-variant-numeric: tabular-nums;
+  }
+  #hud b { color: #b9c6e6; font-weight: 500; }
+  .tip { margin-top: 8px; font-size: 11px; color: #6c7288; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+
+<div id="controls">
+  <div class="presets">
+    <span class="ptitle">天体预设</span>
+    <div class="caps">
+      <button class="cap" data-body="earth">地球</button>
+      <button class="cap" data-body="moon">月球</button>
+      <button class="cap" data-body="jupiter">木星</button>
+      <button class="cap" data-body="space">太空</button>
+    </div>
+    <span class="savehint" id="saveHint">参数已本地保存</span>
+  </div>
+
+  <div class="sliderRow">
+    <div class="ctl">
+      <label>摆长 L <b id="nVL">200 px</b></label>
+      <input id="nL" type="range" min="100" max="350" step="1" value="200">
+    </div>
+    <div class="ctl">
+      <label>重力 g <b id="nVG">9.8</b></label>
+      <input id="nG" type="range" min="1" max="25" step="0.1" value="9.8">
+    </div>
+    <div class="ctl">
+      <label>阻尼 c <b id="nVD">0.000</b></label>
+      <input id="nD" type="range" min="0" max="0.010" step="0.001" value="0">
+    </div>
+    <button id="btnReset">重置摆动</button>
+  </div>
+</div>
+
+<div id="panel">
+  <h1>单摆模拟器 / PENDULUM</h1>
+
+  <div class="row">
+    <label>摆长 L <span id="vL">200 px</span></label>
+    <input id="sL" type="range" min="100" max="350" step="1" value="200">
+  </div>
+  <div class="row">
+    <label>重力 g <span id="vG">9.80 m/s²</span></label>
+    <input id="sG" type="range" min="1" max="25" step="0.1" value="9.8">
+  </div>
+  <div class="row">
+    <label>初始摆角 θ₀ <span id="vA">45°</span></label>
+    <input id="sA" type="range" min="1" max="90" step="1" value="45">
+  </div>
+  <div class="row">
+    <label>阻尼 c <span id="vD">0.000</span></label>
+    <input id="sD" type="range" min="0" max="0.010" step="0.001" value="0">
+  </div>
+
+  <div class="btns">
+    <button id="bPause">暂停</button>
+    <button id="bReset">重置</button>
+    <button id="bTrail">轨迹</button>
+  </div>
+
+  <div id="hud">
+    角度 θ：<b id="hAng">45.00°</b><br>
+    角速度 ω：<b id="hOmega">0.00 rad/s</b><br>
+    周期 T：<b id="hT">2.84 s</b><br>
+    能量 E：<b id="hE">0.000 J</b><br>
+    FPS：<b id="hFps">60</b>
+  </div>
+  <div class="tip">提示：可用鼠标拖动摆球改变初始摆角</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const canvas = document.getElementById("stage");
+  const ctx = canvas.getContext("2d");
+
+  // ---------- 像素 / 物理单位换算：100 px = 1 m ----------
+  const PX_PER_M = 100;
+
+  const state = {
+    Lpx: 200,      // 摆长（像素）
+    g: 9.8,        // 重力加速度 m/s^2
+    theta0: 45 * Math.PI / 180, // 初始摆角
+    theta: 45 * Math.PI / 180,  // 当前摆角
+    omega: 0,      // 角速度 rad/s
+    damping: 0,    // 阻尼系数
+    preset: "earth", // 当前天体预设 key
+    running: true,
+    trail: true,
+    dragging: false
+  };
+
+  const pivot = { x: 0, y: 0 };
+  let W = 0, H = 0;          // 画布 CSS 尺寸（不含下方控制条）
+  let bobR = 22;
+  const trailPts = [];
+  const MAX_TRAIL = 160;
+
+  // ---------- 尺寸自适应（画布独占控制条以上区域） ----------
+  function layout() {
+    pivot.x = W / 2;
+    pivot.y = Math.max(56, Math.min(H * 0.16, H - state.Lpx - bobR - 28));
+    bobR = Math.max(14, Math.min(26, state.Lpx * 0.11));
+  }
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    W = Math.max(1, Math.round(rect.width));
+    H = Math.max(1, Math.round(rect.height));
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    layout();
+    trailPts.length = 0;
+  }
+  window.addEventListener("resize", resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
+
+  // ---------- 物理：θ'' = -(g/L)·sinθ - c·θ' ----------
+  function accel(theta, omega) {
+    const Lm = state.Lpx / PX_PER_M;
+    return -(state.g / Lm) * Math.sin(theta) - state.damping * omega;
+  }
+
+  // RK4 定步长积分，保证不同帧率下轨迹一致
+  function step(h) {
+    const th = state.theta, om = state.omega;
+
+    const k1v = accel(th, om);
+    const k1x = om;
+
+    const k2v = accel(th + 0.5 * h * k1x, om + 0.5 * h * k1v);
+    const k2x = om + 0.5 * h * k1v;
+
+    const k3v = accel(th + 0.5 * h * k2x, om + 0.5 * h * k2v);
+    const k3x = om + 0.5 * h * k2v;
+
+    const k4v = accel(th + h * k3x, om + h * k3v);
+    const k4x = om + h * k3v;
+
+    state.theta += (h / 6) * (k1x + 2 * k2x + 2 * k3x + k4x);
+    state.omega += (h / 6) * (k1v + 2 * k2v + 2 * k3v + k4v);
+
+    if (state.theta > Math.PI) state.theta -= 2 * Math.PI;
+    if (state.theta < -Math.PI) state.theta += 2 * Math.PI;
+  }
+
+  function bobPos(th, L) {
+    return {
+      x: pivot.x + L * Math.sin(th),
+      y: pivot.y + L * Math.cos(th)
+    };
+  }
+
+  // ---------- 绘制 ----------
+  function drawGrid() {
+    const w = W, h = H;
+    ctx.save();
+    ctx.strokeStyle = "rgba(120,140,200,0.05)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 0; x < w; x += 40) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+    for (let y = 0; y < h; y += 40) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawRefs() {
+    const L = state.Lpx;
+    ctx.save();
+    ctx.setLineDash([5, 6]);
+    ctx.strokeStyle = "rgba(140,165,215,0.22)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pivot.x, pivot.y);
+    ctx.lineTo(pivot.x, pivot.y + L + 40);
+    ctx.stroke();
+
+    // 摆角圆弧
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(143,184,255,0.45)";
+    ctx.lineWidth = 1.5;
+    const r = Math.min(70, L * 0.45);
+    const a0 = Math.PI / 2;                 // 竖直向下方向（canvas 角度）
+    const a1 = Math.PI / 2 - state.theta;   // 摆杆方向
+    ctx.beginPath();
+    ctx.arc(pivot.x, pivot.y, r, Math.min(a0, a1), Math.max(a0, a1));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawTrail() {
+    if (!state.trail || trailPts.length < 2) return;
+    ctx.save();
+    ctx.lineCap = "round";
+    for (let i = 1; i < trailPts.length; i++) {
+      const p = trailPts[i - 1], q = trailPts[i];
+      const t = i / trailPts.length;
+      ctx.strokeStyle = "rgba(120,190,255," + (0.05 + 0.30 * t).toFixed(3) + ")";
+      ctx.lineWidth = 1 + 2.2 * t;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(q.x, q.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBob(x, y) {
+    // 外发光
+    ctx.save();
+    ctx.shadowColor = "rgba(120,180,255,0.85)";
+    ctx.shadowBlur = 26;
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = "#5aa0ff";
+    ctx.beginPath();
+    ctx.arc(x, y, bobR * 1.06, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 球体
+    ctx.save();
+    ctx.shadowColor = "rgba(150,200,255,0.9)";
+    ctx.shadowBlur = 18;
+    const grd = ctx.createRadialGradient(
+      x - bobR * 0.35, y - bobR * 0.4, bobR * 0.15,
+      x, y, bobR
+    );
+    grd.addColorStop(0, "#eaf4ff");
+    grd.addColorStop(0.35, "#8fc4ff");
+    grd.addColorStop(0.75, "#3d7ed6");
+    grd.addColorStop(1, "#1f4f96");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x, y, bobR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 高光
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.ellipse(x - bobR * 0.3, y - bobR * 0.38, bobR * 0.26, bobR * 0.18, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "#1a1a24";
+    ctx.fillRect(0, 0, W, H);
+
+    drawGrid();
+    drawRefs();
+    drawTrail();
+
+    const p = bobPos(state.theta, state.Lpx);
+
+    // 摆杆
+    ctx.save();
+    ctx.strokeStyle = "rgba(200,215,245,0.75)";
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = "rgba(150,190,255,0.4)";
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(pivot.x, pivot.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    ctx.restore();
+
+    // 支点
+    ctx.save();
+    ctx.fillStyle = "#7b8199";
+    ctx.beginPath();
+    ctx.arc(pivot.x, pivot.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(210,220,240,0.55)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(pivot.x - 26, pivot.y);
+    ctx.lineTo(pivot.x + 26, pivot.y);
+    ctx.stroke();
+    ctx.restore();
+
+    drawBob(p.x, p.y);
+  }
+
+  // ---------- 数值面板 ----------
+  const el = {
+    ang: document.getElementById("hAng"),
+    om: document.getElementById("hOmega"),
+    T: document.getElementById("hT"),
+    E: document.getElementById("hE"),
+    fps: document.getElementById("hFps")
+  };
+  let fpsAcc = 0, fpsCnt = 0, hudTimer = 0;
+
+  function updateHUD(dt) {
+    fpsAcc += dt; fpsCnt++; hudTimer += dt;
+    if (hudTimer < 0.15) return;
+    const Lm = state.Lpx / PX_PER_M;
+    const T = 2 * Math.PI * Math.sqrt(Lm / state.g); // 小角度近似周期
+    const E = 0.5 * Lm * Lm * state.omega * state.omega
+            + state.g * Lm * (1 - Math.cos(state.theta)); // 单位质量能量
+    el.ang.textContent = (state.theta * 180 / Math.PI).toFixed(2) + "°";
+    el.om.textContent = state.omega.toFixed(3) + " rad/s";
+    el.T.textContent = T.toFixed(2) + " s";
+    el.E.textContent = E.toFixed(3) + " J/kg";
+    el.fps.textContent = Math.round(fpsCnt / fpsAcc);
+    fpsAcc = 0; fpsCnt = 0; hudTimer = 0;
+  }
+
+  // ---------- 主循环：requestAnimationFrame ----------
+  const FIXED = 1 / 240;
+  let acc = 0, last = performance.now();
+
+  function loop(now) {
+    let dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.1) dt = 0.1; // 防止切后台后大跳
+
+    updateTween(dt); // 天体切换时的重力平滑过渡
+
+    if (state.running && !state.dragging) {
+      acc += dt;
+      while (acc >= FIXED) { step(FIXED); acc -= FIXED; }
+
+      if (state.trail) {
+        const p = bobPos(state.theta, state.Lpx);
+        trailPts.push(p);
+        if (trailPts.length > MAX_TRAIL) trailPts.shift();
+      }
+    }
+
+    draw();
+    updateHUD(dt);
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- 控件（左上浮层与下方控制条双向同步） ----------
+  const uL = [document.getElementById("sL"), document.getElementById("nL")];
+  const uG = [document.getElementById("sG"), document.getElementById("nG")];
+  const uD = [document.getElementById("sD"), document.getElementById("nD")];
+  const vL = document.getElementById("vL"), nVL = document.getElementById("nVL");
+  const vG = document.getElementById("vG"), nVG = document.getElementById("nVG");
+  const vD = document.getElementById("vD"), nVD = document.getElementById("nVD");
+  const sA = document.getElementById("sA"), vA = document.getElementById("vA");
+  const caps = Array.prototype.slice.call(document.querySelectorAll(".cap"));
+  const saveHint = document.getElementById("saveHint");
+
+  // ---------- 天体预设（重力目标值，单位 m/s²） ----------
+  const PRESETS = {
+    earth:   { g: 9.8,  name: "地球" },
+    moon:    { g: 1.6,  name: "月球" },
+    jupiter: { g: 24.8, name: "木星" },
+    space:   { g: 1.0,  name: "太空（微重力）" }
+  };
+
+  // 重力平滑过渡（easeInOutCubic，由主循环 rAF 驱动）
+  const gTween = { active: false, from: 9.8, to: 9.8, t: 0, dur: 0.7, key: null };
+
+  function tweenG(target, key) {
+    if (Math.abs(target - state.g) < 0.005) { setG(target, true); syncCaps(key); return; }
+    gTween.from = state.g;
+    gTween.to = target;
+    gTween.t = 0;
+    gTween.key = key || null;
+    gTween.active = true;
+    syncCaps(key);
+  }
+
+  function updateTween(dt) {
+    if (!gTween.active) return;
+    gTween.t += dt;
+    const p = Math.min(1, gTween.t / gTween.dur);
+    const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+    setG(gTween.from + (gTween.to - gTween.from) * e, true);
+    if (p >= 1) {
+      gTween.active = false;
+      setG(gTween.to, true);
+      markDirty();
+    }
+  }
+
+  // 高亮：显式指定 key，或按当前 g 值就近匹配
+  function syncCaps(key) {
+    if (key) { state.preset = key; }
+    else {
+      state.preset = null;
+      let best = null, bestD = 0.06;
+      Object.keys(PRESETS).forEach((k) => {
+        const d = Math.abs(PRESETS[k].g - state.g);
+        if (d < bestD) { bestD = d; best = k; }
+      });
+      state.preset = best;
+    }
+    caps.forEach((b) => {
+      b.classList.toggle("active", b.dataset.body === state.preset);
+    });
+  }
+
+  caps.forEach((b) => {
+    b.addEventListener("click", () => {
+      const p = PRESETS[b.dataset.body];
+      if (!p) return;
+      tweenG(p.g, b.dataset.body);
+      saveHint.textContent = "重力过渡中…";
+    });
+  });
+
+  // ---------- localStorage 持久化 ----------
+  const STORE_KEY = "pendulum_sim_v1";
+  let saveTimer = null;
+  let hydrating = false;
+
+  function snapshot() {
+    return {
+      v: 1,
+      L: state.Lpx,
+      g: state.g,
+      damping: state.damping,
+      angle: Math.round(state.theta0 * 180 / Math.PI),
+      trail: state.trail,
+      preset: state.preset
+    };
+  }
+
+  function markDirty() {
+    if (hydrating) return;
+    saveHint.textContent = "保存中…";
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 300); // 拖动过程防抖
+  }
+
+  function saveNow() {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(snapshot()));
+      saveHint.textContent = "参数已本地保存";
+    } catch (e) {
+      saveHint.textContent = "本地存储不可用（内存模式）";
+    }
+  }
+
+  function readSaved() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      if (!d || typeof d !== "object") return null;
+      return {
+        L: clamp(+d.L, LIMITS.L[0], LIMITS.L[1]),
+        g: clamp(+d.g, LIMITS.g[0], LIMITS.g[1]),
+        damping: clamp(+d.damping, LIMITS.damping[0], LIMITS.damping[1]),
+        angle: clamp(+d.angle, LIMITS.angle[0], LIMITS.angle[1]),
+        trail: d.trail !== false,
+        preset: PRESETS[d.preset] ? d.preset : null
+      };
+    } catch (e) { return null; }
+  }
+
+  window.addEventListener("pagehide", saveNow);
+  window.addEventListener("beforeunload", saveNow);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveNow();
+  });
+
+  const LIMITS = { L: [100, 350], g: [1, 25], damping: [0, 0.010], angle: [1, 90] };
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+  function setL(px) {
+    state.Lpx = Math.round(clamp(+px, LIMITS.L[0], LIMITS.L[1]));
+    uL.forEach((s) => { s.value = state.Lpx; });
+    vL.textContent = state.Lpx + " px";
+    nVL.textContent = state.Lpx + " px";
+    layout();
+    trailPts.length = 0;
+    markDirty();
+  }
+  // fromTween=true 表示由预设过渡调用（不打断过渡、不重复落盘）
+  function setG(g, fromTween) {
+    const v = clamp(+g, LIMITS.g[0], LIMITS.g[1]);
+    state.g = Math.round(v * 100) / 100;
+    uG.forEach((s) => { s.value = state.g; });
+    vG.textContent = state.g.toFixed(2) + " m/s²";
+    nVG.textContent = state.g.toFixed(1);
+    if (!fromTween) { gTween.active = false; syncCaps(); markDirty(); }
+  }
+  function setDamping(c) {
+    state.damping = clamp(+c, LIMITS.damping[0], LIMITS.damping[1]);
+    uD.forEach((s) => { s.value = state.damping; });
+    vD.textContent = state.damping.toFixed(3);
+    nVD.textContent = state.damping.toFixed(3);
+    markDirty();
+  }
+  function setAngle(deg) {
+    const d = clamp(+deg, LIMITS.angle[0], LIMITS.angle[1]);
+    state.theta0 = d * Math.PI / 180;
+    sA.value = Math.round(d);
+    vA.textContent = Math.round(d) + "°";
+    markDirty();
+  }
+
+  uL[0].addEventListener("input", () => setL(uL[0].value));
+  uL[1].addEventListener("input", () => setL(uL[1].value));
+  uG[0].addEventListener("input", () => setG(uG[0].value));
+  uG[1].addEventListener("input", () => setG(uG[1].value));
+  uD[0].addEventListener("input", () => setDamping(uD[0].value));
+  uD[1].addEventListener("input", () => setDamping(uD[1].value));
+  sA.addEventListener("input", () => {
+    setAngle(+sA.value);
+    state.theta = state.theta0;
+    state.omega = 0;
+    trailPts.length = 0;
+  });
+
+  // 复位：θ = 45°，ω = 0，清空轨迹与时间累加器
+  function resetSwing() {
+    setAngle(45);
+    state.theta = 45 * Math.PI / 180;
+    state.omega = 0;
+    state.running = true;
+    bPause.textContent = "暂停";
+    trailPts.length = 0;
+    acc = 0;
+    last = performance.now();
+  }
+
+  const bPause = document.getElementById("bPause");
+  bPause.addEventListener("click", () => {
+    state.running = !state.running;
+    bPause.textContent = state.running ? "暂停" : "继续";
+  });
+  document.getElementById("bReset").addEventListener("click", () => {
+    state.theta = state.theta0;
+    state.omega = 0;
+    trailPts.length = 0;
+  });
+  document.getElementById("btnReset").addEventListener("click", resetSwing);
+  const bTrail = document.getElementById("bTrail");
+  bTrail.addEventListener("click", () => {
+    state.trail = !state.trail;
+    bTrail.textContent = state.trail ? "轨迹" : "无轨迹";
+    if (!state.trail) trailPts.length = 0;
+    markDirty();
+  });
+
+  // ---------- 鼠标拖动摆球 ----------
+  function pointerPos(e) {
+    const r = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - r.left, y: t.clientY - r.top };
+  }
+  function onDown(e) {
+    const p = bobPos(state.theta, state.Lpx);
+    const m = pointerPos(e);
+    if (Math.hypot(m.x - p.x, m.y - p.y) < bobR + 22) {
+      state.dragging = true;
+      trailPts.length = 0;
+      e.preventDefault();
+    }
+  }
+  function onMove(e) {
+    if (!state.dragging) return;
+    const m = pointerPos(e);
+    state.theta = Math.atan2(m.x - pivot.x, Math.max(1, m.y - pivot.y));
+    state.omega = 0;
+    e.preventDefault();
+  }
+  function onUp() {
+    if (state.dragging) {
+      state.dragging = false;
+      setAngle(Math.abs(state.theta * 180 / Math.PI));
+      last = performance.now();
+      acc = 0;
+    }
+  }
+  canvas.addEventListener("mousedown", onDown);
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onUp);
+  canvas.addEventListener("touchstart", onDown, { passive: false });
+  window.addEventListener("touchmove", onMove, { passive: false });
+  window.addEventListener("touchend", onUp);
+
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space") { e.preventDefault(); bPause.click(); }
+    if (e.code === "KeyR") document.getElementById("bReset").click();
+  });
+
+  // ---------- 启动：先恢复本地缓存，再进入主循环 ----------
+  resize();
+
+  hydrating = true;
+  const saved = readSaved();
+  if (saved) {
+    setL(saved.L);
+    setG(saved.g, true);
+    setDamping(saved.damping);
+    setAngle(saved.angle);
+    state.trail = saved.trail;
+    bTrail.textContent = state.trail ? "轨迹" : "无轨迹";
+    state.theta = state.theta0;
+    state.omega = 0;
+    syncCaps(saved.preset);
+    saveHint.textContent = "已恢复上次参数";
+  } else {
+    syncCaps("earth");
+    saveHint.textContent = "参数已本地保存";
+  }
+  hydrating = false;
+  if (!saved) saveNow();
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
